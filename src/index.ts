@@ -1,6 +1,7 @@
 import Phaser from "phaser"
 
 class MainScene extends Phaser.Scene {
+  constructor() { super({ key: 'MainScene' }); }
   private zombies!: Phaser.GameObjects.Group
   private hole!: Phaser.GameObjects.Ellipse
   private score: number = 0
@@ -48,12 +49,21 @@ class MainScene extends Phaser.Scene {
       holeBody.setVelocity(0, 0)
     })
 
-    // Create a group of zombies
-    this.zombies = this.physics.add.group({
-      key: "zombie",
-      repeat: 20,
-      setXY: { x: 50, y: 50, stepX: 70, stepY: 50 },
-    })
+    // Define a larger game world
+    const worldWidth = 5000;
+    const worldHeight = 5000;
+    this.physics.world.setBounds(0, 0, worldWidth, worldHeight);
+    this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
+    this.cameras.main.startFollow(this.hole, true);
+
+    // Spawn more zombies at random positions across the world
+    this.zombies = this.physics.add.group();
+    const zombieCount = 1000;
+    for (let i = 0; i < zombieCount; i++) {
+      const x = Phaser.Math.Between(0, worldWidth);
+      const y = Phaser.Math.Between(0, worldHeight);
+      this.zombies.create(x, y, 'zombie');
+    }
 
     // Add collision detection between the hole and zombies
     this.physics.add.overlap(
@@ -67,14 +77,18 @@ class MainScene extends Phaser.Scene {
       undefined,
       this,
     )
+
+    // Launch the HUD scene to display the score, passing this MainScene instance
+    this.scene.launch('HUDScene', { mainScene: this });
   }
 
   swallowZombie(
     hole: Phaser.GameObjects.Ellipse,
     zombie: Phaser.Physics.Arcade.Sprite,
   ) {
-    zombie.destroy() // Remove the zombie
-    this.score += 1 // Update the score
+    zombie.destroy();
+    this.score += 1;
+    this.events.emit('scoreChanged', this.score); // Notify HUD of score update
 
     // Check if the hole should grow
     if (this.score === 50 || this.score === 200) {
@@ -87,18 +101,37 @@ class MainScene extends Phaser.Scene {
   }
 }
 
+// New HUD scene that overlays the score
+class HUDScene extends Phaser.Scene {
+  private scoreText!: Phaser.GameObjects.Text;
+
+  constructor() {
+    super({ key: 'HUDScene', active: false });
+  }
+
+  create() {
+    // Display score in top-left corner, fixed to camera
+    this.scoreText = this.add.text(10, 10, 'Score: 0', { fontSize: '20px', color: '#ffffff' });
+    this.scoreText.setScrollFactor(0);
+
+    // Listen to score updates from MainScene instance passed in data
+    const mainScene = (this.scene.settings.data as any).mainScene as MainScene;
+    mainScene.events.on('scoreChanged', (score: number) => {
+      this.scoreText.setText('Score: ' + score);
+    });
+  }
+}
+
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   width: 800,
   height: 600,
   backgroundColor: "#87CEEB",
-  scene: MainScene,
   physics: {
     default: "arcade",
-    arcade: {
-      debug: false,
-    },
+    arcade: { debug: false },
   },
+  scene: [MainScene, HUDScene], // include both scenes
 }
 
 new Phaser.Game(config)
