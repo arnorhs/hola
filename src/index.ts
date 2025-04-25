@@ -130,8 +130,14 @@ class MainScene extends Phaser.Scene {
     this.events.emit("scoreChanged", this.score) // Notify HUD of score update
 
     // Check if the hole should grow
-    if (this.score === 50 || this.score === 200) {
-      this.hole.setScale(this.hole.scale + 0.5)
+    if (
+      this.score === 20 ||
+      this.score === 50 ||
+      this.score === 100 ||
+      this.score === 200 ||
+      this.score === 500
+    ) {
+      this.hole.setScale(this.hole.scale + 0.8)
     }
   }
 
@@ -141,6 +147,14 @@ class MainScene extends Phaser.Scene {
     this.zombies.getChildren().forEach((child) => {
       const zombie = child as Phaser.Physics.Arcade.Sprite
       zombie.setDepth(zombie.y)
+      // Mirror sprite based on horizontal velocity
+      const body = zombie.body as Phaser.Physics.Arcade.Body
+      const vx = body.velocity.x
+      if (vx > 0) {
+        zombie.setFlipX(true)
+      } else if (vx < 0) {
+        zombie.setFlipX(false)
+      }
     })
   }
 }
