@@ -96,9 +96,15 @@ class MainScene extends Phaser.Scene {
       ) as Phaser.Physics.Arcade.Sprite
       zombie.anims.play("zombie_walk", true)
       const body = zombie.body as Phaser.Physics.Arcade.Body
+
+      // Set custom hitbox size and offset
+      body.setSize(26, 15)
+      body.setOffset(22, 40)
+
+      const zombieSpeed = 50
       body.setVelocity(
-        Phaser.Math.Between(-100, 100),
-        Phaser.Math.Between(-100, 100),
+        Phaser.Math.Between(-zombieSpeed, zombieSpeed),
+        Phaser.Math.Between(-zombieSpeed, zombieSpeed),
       )
       body.setCollideWorldBounds(true)
       body.setBounce(1, 1)
@@ -125,6 +131,19 @@ class MainScene extends Phaser.Scene {
     hole: Phaser.GameObjects.Ellipse,
     zombie: Phaser.Physics.Arcade.Sprite,
   ) {
+    // Only swallow if the zombie is entirely within the hole
+    const holeRadius = this.hole.width * this.hole.scaleX - 20
+    const zombieRadius = (zombie.width * zombie.scaleX) / 2
+    const dist = Phaser.Math.Distance.Between(
+      hole.x,
+      hole.y,
+      zombie.x,
+      zombie.y,
+    )
+    if (dist + zombieRadius > holeRadius) {
+      return
+    }
+
     zombie.destroy()
     this.score += 1
     this.events.emit("scoreChanged", this.score) // Notify HUD of score update
@@ -146,14 +165,30 @@ class MainScene extends Phaser.Scene {
     // Depth sort zombies based on their y-position
     this.zombies.getChildren().forEach((child) => {
       const zombie = child as Phaser.Physics.Arcade.Sprite
-      zombie.setDepth(zombie.y)
-      // Mirror sprite based on horizontal velocity
       const body = zombie.body as Phaser.Physics.Arcade.Body
+      // ...existing depth-sorting and flip logic...
+      zombie.setDepth(zombie.y)
       const vx = body.velocity.x
       if (vx > 0) {
         zombie.setFlipX(true)
       } else if (vx < 0) {
         zombie.setFlipX(false)
+      }
+
+      // Avoid the hole if too close
+      const threshold = 200
+      const dist = Phaser.Math.Distance.Between(
+        this.hole.x,
+        this.hole.y,
+        zombie.x,
+        zombie.y,
+      )
+      if (dist < threshold) {
+        const dx = zombie.x - this.hole.x
+        const dy = zombie.y - this.hole.y
+        const mag = Math.hypot(dx, dy) || 1
+        const avoidSpeed = 100
+        body.setVelocity((dx / mag) * avoidSpeed, (dy / mag) * avoidSpeed)
       }
     })
   }
