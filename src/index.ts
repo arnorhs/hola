@@ -187,7 +187,7 @@ class MainScene extends Phaser.Scene {
         const dx = zombie.x - this.hole.x
         const dy = zombie.y - this.hole.y
         const mag = Math.hypot(dx, dy) || 1
-        const avoidSpeed = 100
+        const avoidSpeed = 75
         body.setVelocity((dx / mag) * avoidSpeed, (dy / mag) * avoidSpeed)
       }
     })
