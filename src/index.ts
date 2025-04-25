@@ -16,7 +16,7 @@ class MainScene extends Phaser.Scene {
       startFrame: 0,
       endFrame: 6,
     })
-    this.load.image('brick', 'assets/brick-texture.png');
+    this.load.image("brick", "assets/brick-texture.png")
   }
 
   create() {
@@ -65,9 +65,10 @@ class MainScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.hole, true)
 
     // Add tiled brick background covering entire world
-    this.add.tileSprite(0, 0, worldWidth, worldHeight, 'brick')
-        .setOrigin(0, 0)
-        .setDepth(-1);
+    this.add
+      .tileSprite(0, 0, worldWidth, worldHeight, "brick")
+      .setOrigin(0, 0)
+      .setDepth(-1)
 
     // Create zombie walk animation
     this.anims.create({
@@ -138,9 +139,9 @@ class MainScene extends Phaser.Scene {
     // Check for collisions and update score
     // Depth sort zombies based on their y-position
     this.zombies.getChildren().forEach((child) => {
-      const zombie = child as Phaser.Physics.Arcade.Sprite;
-      zombie.setDepth(zombie.y);
-    });
+      const zombie = child as Phaser.Physics.Arcade.Sprite
+      zombie.setDepth(zombie.y)
+    })
   }
 }
 
