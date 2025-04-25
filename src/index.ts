@@ -176,7 +176,9 @@ class MainScene extends Phaser.Scene {
       }
 
       // Avoid the hole if too close
-      const threshold = 200
+      // Make threshold dynamic based on hole size
+      const holeRadius = (this.hole.width * this.hole.scaleX) / 2
+      const threshold = holeRadius * 2
       const dist = Phaser.Math.Distance.Between(
         this.hole.x,
         this.hole.y,
