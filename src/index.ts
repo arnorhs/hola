@@ -1,14 +1,21 @@
 import Phaser from "phaser"
 
 class MainScene extends Phaser.Scene {
-  constructor() { super({ key: 'MainScene' }); }
+  constructor() {
+    super({ key: "MainScene" })
+  }
   private zombies!: Phaser.GameObjects.Group
   private hole!: Phaser.GameObjects.Ellipse
   private score: number = 0
 
   preload() {
     // Load assets here (e.g., zombie sprites)
-    this.load.image("zombie", "path/to/zombie.png")
+    this.load.spritesheet("zombie", "assets/zombie.png", {
+      frameWidth: 64,
+      frameHeight: 64,
+      startFrame: 0,
+      endFrame: 6,
+    })
   }
 
   create() {
@@ -50,19 +57,44 @@ class MainScene extends Phaser.Scene {
     })
 
     // Define a larger game world
-    const worldWidth = 5000;
-    const worldHeight = 5000;
-    this.physics.world.setBounds(0, 0, worldWidth, worldHeight);
-    this.cameras.main.setBounds(0, 0, worldWidth, worldHeight);
-    this.cameras.main.startFollow(this.hole, true);
+    const worldWidth = 5000
+    const worldHeight = 5000
+    this.physics.world.setBounds(0, 0, worldWidth, worldHeight)
+    this.cameras.main.setBounds(0, 0, worldWidth, worldHeight)
+    this.cameras.main.startFollow(this.hole, true)
+
+    // Create zombie walk animation
+    this.anims.create({
+      key: "zombie_walk",
+      frames: this.anims.generateFrameNumbers("zombie", { start: 0, end: 6 }),
+      frameRate: 8,
+      repeat: -1,
+    })
 
     // Spawn more zombies at random positions across the world
-    this.zombies = this.physics.add.group();
-    const zombieCount = 1000;
+    this.zombies = this.physics.add.group({
+      classType: Phaser.Physics.Arcade.Sprite,
+    })
+
+    const zombieCount = 1000
     for (let i = 0; i < zombieCount; i++) {
-      const x = Phaser.Math.Between(0, worldWidth);
-      const y = Phaser.Math.Between(0, worldHeight);
-      this.zombies.create(x, y, 'zombie');
+      const x = Phaser.Math.Between(0, worldWidth)
+      const y = Phaser.Math.Between(0, worldHeight)
+      // Spawn each zombie via the group so it's a Sprite with animations
+      const zombie = this.zombies.create(
+        x,
+        y,
+        "zombie",
+        0,
+      ) as Phaser.Physics.Arcade.Sprite
+      zombie.anims.play("zombie_walk", true)
+      const body = zombie.body as Phaser.Physics.Arcade.Body
+      body.setVelocity(
+        Phaser.Math.Between(-100, 100),
+        Phaser.Math.Between(-100, 100),
+      )
+      body.setCollideWorldBounds(true)
+      body.setBounce(1, 1)
     }
 
     // Add collision detection between the hole and zombies
@@ -79,16 +111,16 @@ class MainScene extends Phaser.Scene {
     )
 
     // Launch the HUD scene to display the score, passing this MainScene instance
-    this.scene.launch('HUDScene', { mainScene: this });
+    this.scene.launch("HUDScene", { mainScene: this })
   }
 
   swallowZombie(
     hole: Phaser.GameObjects.Ellipse,
     zombie: Phaser.Physics.Arcade.Sprite,
   ) {
-    zombie.destroy();
-    this.score += 1;
-    this.events.emit('scoreChanged', this.score); // Notify HUD of score update
+    zombie.destroy()
+    this.score += 1
+    this.events.emit("scoreChanged", this.score) // Notify HUD of score update
 
     // Check if the hole should grow
     if (this.score === 50 || this.score === 200) {
@@ -103,22 +135,25 @@ class MainScene extends Phaser.Scene {
 
 // New HUD scene that overlays the score
 class HUDScene extends Phaser.Scene {
-  private scoreText!: Phaser.GameObjects.Text;
+  private scoreText!: Phaser.GameObjects.Text
 
   constructor() {
-    super({ key: 'HUDScene', active: false });
+    super({ key: "HUDScene", active: false })
   }
 
   create() {
     // Display score in top-left corner, fixed to camera
-    this.scoreText = this.add.text(10, 10, 'Score: 0', { fontSize: '20px', color: '#ffffff' });
-    this.scoreText.setScrollFactor(0);
+    this.scoreText = this.add.text(10, 10, "Score: 0", {
+      fontSize: "20px",
+      color: "#ffffff",
+    })
+    this.scoreText.setScrollFactor(0)
 
     // Listen to score updates from MainScene instance passed in data
-    const mainScene = (this.scene.settings.data as any).mainScene as MainScene;
-    mainScene.events.on('scoreChanged', (score: number) => {
-      this.scoreText.setText('Score: ' + score);
-    });
+    const mainScene = (this.scene.settings.data as any).mainScene as MainScene
+    mainScene.events.on("scoreChanged", (score: number) => {
+      this.scoreText.setText("Score: " + score)
+    })
   }
 }
 
