@@ -7,6 +7,14 @@ class MainScene extends Phaser.Scene {
   private zombies!: Phaser.GameObjects.Group
   private hole!: Phaser.GameObjects.Ellipse
   private score: number = 0
+  private dyingZombies: {
+    zombie: Phaser.Physics.Arcade.Sprite
+    startTime: number
+    startX: number
+    startY: number
+    startScaleX: number
+    startScaleY: number
+  }[] = []
 
   preload() {
     // Load assets here (e.g., zombie sprites)
@@ -98,8 +106,8 @@ class MainScene extends Phaser.Scene {
       const body = zombie.body as Phaser.Physics.Arcade.Body
 
       // Set custom hitbox size and offset
-      body.setSize(26, 15)
-      body.setOffset(22, 40)
+      body.setSize(3, 3)
+      body.setOffset(29, 44)
 
       const zombieSpeed = 50
       body.setVelocity(
@@ -144,29 +152,69 @@ class MainScene extends Phaser.Scene {
       return
     }
 
-    zombie.destroy()
-    this.score += 1
-    this.events.emit("scoreChanged", this.score) // Notify HUD of score update
-
-    // Check if the hole should grow
-    if (
-      this.score === 20 ||
-      this.score === 50 ||
-      this.score === 100 ||
-      this.score === 200 ||
-      this.score === 500
-    ) {
-      this.hole.setScale(this.hole.scale + 0.8)
+    // Disable zombie's physics body to prevent multiple swallows
+    if (zombie.body) {
+      ;(zombie.body as Phaser.Physics.Arcade.Body).enable = false
     }
+
+    // Mark zombie as dying and store animation info
+    this.dyingZombies.push({
+      zombie,
+      startTime: this.time.now,
+      startX: zombie.x,
+      startY: zombie.y,
+      startScaleX: zombie.scaleX,
+      startScaleY: zombie.scaleY,
+    })
   }
 
   update() {
-    // Check for collisions and update score
+    // Animate dying zombies
+    const DURATION = 400
+    for (let i = this.dyingZombies.length - 1; i >= 0; i--) {
+      const entry = this.dyingZombies[i]
+      const t = Math.min(1, (this.time.now - entry.startTime) / DURATION)
+      // Interpolate position and scale
+      entry.zombie.x = Phaser.Math.Interpolation.Linear(
+        [entry.startX, this.hole.x],
+        t,
+      )
+      entry.zombie.y = Phaser.Math.Interpolation.Linear(
+        [entry.startY, this.hole.y],
+        t,
+      )
+      entry.zombie.scaleX = Phaser.Math.Interpolation.Linear(
+        [entry.startScaleX, 0],
+        t,
+      )
+      entry.zombie.scaleY = Phaser.Math.Interpolation.Linear(
+        [entry.startScaleY, 0],
+        t,
+      )
+      if (t >= 1) {
+        entry.zombie.destroy()
+        this.score += 1
+        this.events.emit("scoreChanged", this.score)
+        // Check if the hole should grow
+        if (
+          this.score === 20 ||
+          this.score === 50 ||
+          this.score === 100 ||
+          this.score === 200 ||
+          this.score === 500
+        ) {
+          this.hole.setScale(this.hole.scale + 0.8)
+        }
+        this.dyingZombies.splice(i, 1)
+      }
+    }
+
     // Depth sort zombies based on their y-position
     this.zombies.getChildren().forEach((child) => {
       const zombie = child as Phaser.Physics.Arcade.Sprite
+      // Skip dying zombies
+      if (this.dyingZombies.some((dz) => dz.zombie === zombie)) return
       const body = zombie.body as Phaser.Physics.Arcade.Body
-      // ...existing depth-sorting and flip logic...
       zombie.setDepth(zombie.y)
       const vx = body.velocity.x
       if (vx > 0) {
