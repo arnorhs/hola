@@ -6,6 +6,7 @@ class MainScene extends Phaser.Scene {
   }
   private zombies!: Phaser.GameObjects.Group
   private hole!: Phaser.GameObjects.Ellipse
+  private holeOverlay!: Phaser.GameObjects.Image
   private score: number = 0
   private dyingZombies: {
     zombie: Phaser.Physics.Arcade.Sprite
@@ -25,6 +26,7 @@ class MainScene extends Phaser.Scene {
       endFrame: 6,
     })
     this.load.image("brick", "assets/brick-texture.png")
+    this.load.image("bigHoleOverlay", "assets/big-ol-hole.png")
   }
 
   create() {
@@ -133,6 +135,16 @@ class MainScene extends Phaser.Scene {
 
     // Launch the HUD scene to display the score, passing this MainScene instance
     this.scene.launch("HUDScene", { mainScene: this })
+
+    // Add overlay image above the hole
+    this.holeOverlay = this.add.image(
+      this.hole.x,
+      this.hole.y,
+      "bigHoleOverlay",
+    )
+    this.holeOverlay.setOrigin(0.5, 0.5)
+    this.holeOverlay.setDisplaySize(this.hole.width, this.hole.height)
+    this.holeOverlay.setDepth(10) // Ensure it's above the hole
   }
 
   swallowZombie(
@@ -198,15 +210,25 @@ class MainScene extends Phaser.Scene {
         // Check if the hole should grow
         if (
           this.score === 20 ||
-          this.score === 50 ||
-          this.score === 100 ||
-          this.score === 200 ||
-          this.score === 500
+          this.score === 40 ||
+          this.score === 80 ||
+          this.score === 160 ||
+          this.score === 320
         ) {
-          this.hole.setScale(this.hole.scale + 0.8)
+          this.hole.setScale(this.hole.scale * 1.2)
         }
         this.dyingZombies.splice(i, 1)
       }
+    }
+
+    // Sync overlay position and scale to the hole
+    if (this.holeOverlay) {
+      this.holeOverlay.x = this.hole.x
+      this.holeOverlay.y = this.hole.y
+      this.holeOverlay.setDisplaySize(
+        this.hole.width * this.hole.scaleX,
+        this.hole.height * this.hole.scaleY,
+      )
     }
 
     // Depth sort zombies based on their y-position
@@ -273,6 +295,7 @@ const config: Phaser.Types.Core.GameConfig = {
   width: 800,
   height: 600,
   backgroundColor: "#87CEEB",
+  roundPixels: true,
   physics: {
     default: "arcade",
     arcade: { debug: false },
