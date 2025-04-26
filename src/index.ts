@@ -15,6 +15,8 @@ class MainScene extends Phaser.Scene {
     startY: number
     startScaleX: number
     startScaleY: number
+    startRotation?: number
+    targetRotation?: number
   }[] = []
 
   preload() {
@@ -31,7 +33,7 @@ class MainScene extends Phaser.Scene {
 
   create() {
     // Create the hole with a physics body
-    this.hole = this.add.ellipse(400, 300, 100, 100, 0x000000)
+    this.hole = this.add.ellipse(400, 300, 100, 100, 0x00000000)
     this.physics.add.existing(this.hole, false)
     const holeBody = this.hole.body as Phaser.Physics.Arcade.Body
     holeBody.setCircle(50)
@@ -169,6 +171,16 @@ class MainScene extends Phaser.Scene {
       ;(zombie.body as Phaser.Physics.Arcade.Body).enable = false
     }
 
+    // Determine target rotation based on velocity
+    let targetRotation = 0
+    let startRotation = zombie.rotation
+    const body = zombie.body as Phaser.Physics.Arcade.Body
+    if (body.velocity.x > 0) {
+      targetRotation = Phaser.Math.DegToRad(-90) // 90° left
+    } else if (body.velocity.x < 0) {
+      targetRotation = Phaser.Math.DegToRad(90) // 90° right
+    }
+
     // Mark zombie as dying and store animation info
     this.dyingZombies.push({
       zombie,
@@ -177,6 +189,8 @@ class MainScene extends Phaser.Scene {
       startY: zombie.y,
       startScaleX: zombie.scaleX,
       startScaleY: zombie.scaleY,
+      startRotation,
+      targetRotation,
     })
   }
 
@@ -203,6 +217,16 @@ class MainScene extends Phaser.Scene {
         [entry.startScaleY, 0],
         t,
       )
+      // Interpolate rotation
+      if (
+        typeof entry.startRotation !== "undefined" &&
+        typeof entry.targetRotation !== "undefined"
+      ) {
+        entry.zombie.rotation = Phaser.Math.Interpolation.Linear(
+          [entry.startRotation, entry.targetRotation],
+          t,
+        )
+      }
       if (t >= 1) {
         entry.zombie.destroy()
         this.score += 1
