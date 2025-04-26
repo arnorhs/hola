@@ -1,12 +1,129 @@
 import Phaser from "phaser"
 
+// Hole mode system
+enum ModeType {
+  Normal = "normal",
+  Shape = "shape",
+  Shader = "shader",
+}
+interface HoleMode {
+  applyMode(): void
+  resetMode(): void
+  isInsideHole(zombie: Phaser.Physics.Arcade.Sprite): boolean
+  update?(): void
+}
+class NormalMode implements HoleMode {
+  constructor(private scene: MainScene) {}
+  applyMode(): void {
+    this.scene.hole.setVisible(true)
+    this.scene.holeOverlay.setVisible(true)
+  }
+  resetMode(): void {}
+  isInsideHole(zombie: Phaser.Physics.Arcade.Sprite): boolean {
+    const holeRadius = this.scene.hole.width * this.scene.hole.scaleX - 20
+    const zombieRadius = (zombie.width * zombie.scaleX) / 2
+    const dist = Phaser.Math.Distance.Between(
+      this.scene.hole.x,
+      this.scene.hole.y,
+      zombie.x,
+      zombie.y,
+    )
+    return dist + zombieRadius <= holeRadius
+  }
+}
+class ShapeMode implements HoleMode {
+  private graphics!: Phaser.GameObjects.Graphics
+  private polygon!: Phaser.Geom.Polygon
+  private relativePoints!: Phaser.Math.Vector2[]
+  constructor(private scene: MainScene) {}
+  applyMode(): void {
+    this.scene.hole.setVisible(false)
+    this.scene.holeOverlay.setVisible(false)
+    const cx = this.scene.hole.x
+    const cy = this.scene.hole.y
+    const radius = (this.scene.hole.width * this.scene.hole.scaleX) / 2
+    const sides = Phaser.Math.Between(5, 8)
+    this.relativePoints = []
+    for (let i = 0; i < sides; i++) {
+      const angle = (i / sides) * Math.PI * 2
+      const r = Phaser.Math.Between(radius * 0.5, radius)
+      this.relativePoints.push(
+        new Phaser.Math.Vector2(Math.cos(angle) * r, Math.sin(angle) * r),
+      )
+    }
+    this.graphics = this.scene.add.graphics({
+      fillStyle: { color: Phaser.Display.Color.RandomRGB().color },
+    })
+    // Normalize polygon area to match circle area (πr²)
+    // Compute area via shoelace formula on relativePoints
+    const currentArea = Math.abs(
+      this.relativePoints.reduce((sum, p, i, arr) => {
+        const next = arr[(i + 1) % arr.length]
+        return sum + (p.x * next.y - next.x * p.y)
+      }, 0) / 2,
+    )
+    const targetArea = Math.PI * radius * radius
+    const scaleFactor = Math.sqrt(targetArea / currentArea)
+    this.relativePoints.forEach((p) => p.scale(scaleFactor))
+    // Initial draw
+    this.update()
+  }
+  resetMode(): void {
+    this.graphics.destroy()
+  }
+  update(): void {
+    this.graphics.clear()
+    const cx = this.scene.hole.x
+    const cy = this.scene.hole.y
+    const absPoints: Phaser.Math.Vector2[] = this.relativePoints.map(
+      (p) => new Phaser.Math.Vector2(cx + p.x, cy + p.y),
+    )
+    this.polygon = new Phaser.Geom.Polygon(
+      absPoints.map((p) => [p.x, p.y]).flat(),
+    )
+    this.graphics.fillPoints(this.polygon.points, true)
+  }
+  isInsideHole(zombie: Phaser.Physics.Arcade.Sprite): boolean {
+    return Phaser.Geom.Polygon.Contains(this.polygon, zombie.x, zombie.y)
+  }
+}
+class ShaderMode implements HoleMode {
+  constructor(private scene: MainScene) {}
+  applyMode(): void {
+    this.scene.hole.setVisible(true)
+    this.scene.holeOverlay.setVisible(true)
+    // placeholder shader effect: continuous rotation
+    this.scene.tweens.add({
+      targets: this.scene.holeOverlay,
+      angle: 360,
+      duration: 2000,
+      repeat: -1,
+    })
+  }
+  resetMode(): void {
+    this.scene.tweens.killTweensOf(this.scene.holeOverlay)
+    this.scene.holeOverlay.setAngle(0)
+  }
+  isInsideHole(zombie: Phaser.Physics.Arcade.Sprite): boolean {
+    const holeRadius = this.scene.hole.width * this.scene.hole.scaleX - 20
+    const zombieRadius = (zombie.width * zombie.scaleX) / 2
+    const dist = Phaser.Math.Distance.Between(
+      this.scene.hole.x,
+      this.scene.hole.y,
+      zombie.x,
+      zombie.y,
+    )
+    return dist + zombieRadius <= holeRadius
+  }
+}
+
 class MainScene extends Phaser.Scene {
   constructor() {
     super({ key: "MainScene" })
   }
   private zombies!: Phaser.GameObjects.Group
-  private hole!: Phaser.GameObjects.Ellipse
-  private holeOverlay!: Phaser.GameObjects.Image
+  public hole!: Phaser.GameObjects.Ellipse
+  public holeOverlay!: Phaser.GameObjects.Image
   private score: number = 0
   private dyingZombies: {
     zombie: Phaser.Physics.Arcade.Sprite
@@ -18,6 +135,14 @@ class MainScene extends Phaser.Scene {
     startRotation?: number
     targetRotation?: number
   }[] = []
+
+  // mode properties
+  private modes!: { [key in ModeType]: HoleMode }
+  private currentModeType!: ModeType
+  private currentMode!: HoleMode
+  // Global hole size scale
+  private holeScale: number = 1
+  private sizeThresholds: number[] = [20, 40, 80, 160, 320] // for normal mode
 
   preload() {
     // Load assets here (e.g., zombie sprites)
@@ -126,11 +251,8 @@ class MainScene extends Phaser.Scene {
     this.physics.add.overlap(
       this.hole,
       this.zombies,
-      (hole, zombie) =>
-        this.swallowZombie(
-          hole as Phaser.GameObjects.Ellipse,
-          zombie as Phaser.Physics.Arcade.Sprite,
-        ),
+      (_hole, zombie) =>
+        this.swallowZombie(zombie as Phaser.Physics.Arcade.Sprite),
       undefined,
       this,
     )
@@ -147,24 +269,41 @@ class MainScene extends Phaser.Scene {
     this.holeOverlay.setOrigin(0.5, 0.5)
     this.holeOverlay.setDisplaySize(this.hole.width, this.hole.height)
     this.holeOverlay.setDepth(10) // Ensure it's above the hole
+
+    // Initialize modes
+    this.modes = {
+      [ModeType.Normal]: new NormalMode(this),
+      [ModeType.Shape]: new ShapeMode(this),
+      [ModeType.Shader]: new ShaderMode(this),
+    }
+    this.currentModeType = ModeType.Normal
+    this.currentMode = this.modes[this.currentModeType]
+    // Initial mode visuals
+    this.currentMode.applyMode()
+    // apply global scale
+    this.hole.setScale(this.holeScale)
+
+    // Toggle modes with H key
+    this.input.keyboard!.on("keydown-H", this.switchMode, this)
   }
 
-  swallowZombie(
-    hole: Phaser.GameObjects.Ellipse,
-    zombie: Phaser.Physics.Arcade.Sprite,
-  ) {
-    // Only swallow if the zombie is entirely within the hole
-    const holeRadius = this.hole.width * this.hole.scaleX - 20
-    const zombieRadius = (zombie.width * zombie.scaleX) / 2
-    const dist = Phaser.Math.Distance.Between(
-      hole.x,
-      hole.y,
-      zombie.x,
-      zombie.y,
-    )
-    if (dist + zombieRadius > holeRadius) {
-      return
-    }
+  // mode switcher
+  private switchMode(): void {
+    this.currentMode.resetMode()
+    const order = [ModeType.Normal, ModeType.Shape, ModeType.Shader]
+    const nextIndex = (order.indexOf(this.currentModeType) + 1) % order.length
+    this.currentModeType = order[nextIndex]
+    this.currentMode = this.modes[this.currentModeType]
+    this.currentMode.applyMode()
+    // apply global scale
+    this.hole.setScale(this.holeScale)
+    // ensure shape visuals update to new scale
+    this.currentMode.update?.()
+  }
+
+  swallowZombie(zombie: Phaser.Physics.Arcade.Sprite) {
+    // only swallow if mode allows
+    if (!this.currentMode.isInsideHole(zombie)) return
 
     // Disable zombie's physics body to prevent multiple swallows
     if (zombie.body) {
@@ -195,6 +334,9 @@ class MainScene extends Phaser.Scene {
   }
 
   update() {
+    // update current mode visuals
+    this.currentMode.update?.()
+
     // Animate dying zombies
     const DURATION = 400
     for (let i = this.dyingZombies.length - 1; i >= 0; i--) {
@@ -231,15 +373,34 @@ class MainScene extends Phaser.Scene {
         entry.zombie.destroy()
         this.score += 1
         this.events.emit("scoreChanged", this.score)
-        // Check if the hole should grow
-        if (
-          this.score === 20 ||
-          this.score === 40 ||
-          this.score === 80 ||
-          this.score === 160 ||
-          this.score === 320
-        ) {
-          this.hole.setScale(this.hole.scale * 1.2)
+        // Growth logic per mode
+        switch (this.currentModeType) {
+          case ModeType.Normal:
+            if (this.sizeThresholds.includes(this.score)) {
+              this.holeScale *= 1.2
+              this.hole.setScale(this.holeScale)
+            }
+            break
+          case ModeType.Shape:
+            if (this.score % 10 === 0) {
+              this.holeScale *= 1.05
+              this.hole.setScale(this.holeScale)
+              // regenerate shape polygon after growth
+              this.currentMode.resetMode()
+              this.currentMode.applyMode()
+              this.currentMode.update?.()
+            }
+            break
+          case ModeType.Shader:
+            this.holeScale *= 1.002 // 0.2% growth per point
+            this.hole.setScale(this.holeScale)
+            break
+        }
+        // regenerate shape on every swallow when in Shape mode
+        if (this.currentModeType === ModeType.Shape) {
+          this.currentMode.resetMode()
+          this.currentMode.applyMode()
+          this.currentMode.update?.()
         }
         this.dyingZombies.splice(i, 1)
       }
